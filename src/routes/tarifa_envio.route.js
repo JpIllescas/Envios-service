@@ -21,7 +21,8 @@ class Tarifa_envioRoute {
 
     // Actualizar un Tarifa envio
     this.router.put("/:id", this.controller.updateTarifa_envio.bind(this.controller));
-
+    //calcula un envio 
+    this.router.post("/calcular", this.controller.calcularEnvio.bind(this.controller));
   }
 }
 

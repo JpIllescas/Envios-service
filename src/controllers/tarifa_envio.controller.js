@@ -1,5 +1,12 @@
+// controllers/Tarifa_envioController.js
 const db = require("../models");
 const Tarifa_envio = db.getModel("Tarifa_envio");
+const { calcularTarifa } = require("../utils/buildMedidas");
+
+// Utilidad para redondeo consistente
+function round(n, dec = 2) {
+  return Number(Number(n).toFixed(dec));
+}
 
 class Tarifa_envioController {
   // Crear una nueva tarifa de envío
@@ -12,6 +19,14 @@ class Tarifa_envioController {
       costo_base == null
     ) {
       return res.status(400).send({ message: "Todos los campos son obligatorios." });
+    }
+
+    // Validaciones de consistencia
+    if (Number(peso_minimo) > Number(peso_maximo)) {
+      return res.status(400).send({ message: "peso_minimo no puede ser mayor que peso_maximo." });
+    }
+    if (Number(volumen_min) > Number(volumen_max)) {
+      return res.status(400).send({ message: "volumen_min no puede ser mayor que volumen_max." });
     }
 
     try {
@@ -72,6 +87,14 @@ class Tarifa_envioController {
       if (volumen_max != null) tarifa.volumen_max = volumen_max;
       if (costo_base != null) tarifa.costo_base = costo_base;
 
+      // Validaciones de consistencia
+      if (Number(tarifa.peso_minimo) > Number(tarifa.peso_maximo)) {
+        return res.status(400).send({ message: "peso_minimo no puede ser mayor que peso_maximo." });
+      }
+      if (Number(tarifa.volumen_min) > Number(tarifa.volumen_max)) {
+        return res.status(400).send({ message: "volumen_min no puede ser mayor que volumen_max." });
+      }
+
       await tarifa.save();
 
       res.send({
@@ -80,6 +103,123 @@ class Tarifa_envioController {
       });
     } catch (err) {
       res.status(500).send({ message: "Error al actualizar la tarifa de envío." });
+    }
+  }
+
+
+  async calcularEnvio(req, res) {
+    try {
+      const { items = [] } = req.body;
+
+      if (!Array.isArray(items) || items.length === 0) {
+        return res.status(400).send({ message: "Debe enviar 'items' con al menos un elemento." });
+      }
+
+      // Trae todos los tramos (si crece mucho, considera filtrar por rangos aproximados)
+      const tramos = await Tarifa_envio.findAll();
+      if (!tramos || tramos.length === 0) {
+        return res.status(404).send({ message: "No hay tramos de tarifa configurados." });
+        }
+
+      const DIVISOR_DIM_CM = 5000; // estándar; cámbialo si luego lo guardas por tramo
+
+      let totalEnvio = 0;
+      const detalle = [];
+
+      for (const it of items) {
+        const cantidad = Number(it?.cantidad) || 1;
+        const alto  = Number(it?.alto)  || 0;
+        const ancho = Number(it?.ancho) || 0;
+        const largo = Number(it?.largo) || 0;
+        const pesoRealKg = Number(it?.peso) || 0;
+        const precioItem = Number(it?.precio) || 0;
+        const esFragil   = Boolean(it?.fragil);
+
+        // Medidas al vuelo
+        const volumenCm3 = alto * ancho * largo;
+        const pesoVolumetricoKg = DIVISOR_DIM_CM > 0 ? (volumenCm3 / DIVISOR_DIM_CM) : 0;
+        const kgTarifables = Math.max(pesoRealKg, pesoVolumetricoKg);
+
+        // Buscar tramo que cubra el rango de peso/volumen
+        const tramo = tramos.find(t =>
+          kgTarifables >= Number(t.peso_minimo) &&
+          kgTarifables <= Number(t.peso_maximo) &&
+          volumenCm3  >= Number(t.volumen_min) &&
+          volumenCm3  <= Number(t.volumen_max)
+        );
+
+        if (!tramo) {
+          return res.status(404).send({
+            message: "No existe una tarifa que cubra el rango de peso/volumen para un ítem.",
+            item: it,
+            kgTarifables: round(kgTarifables),
+            volumenCm3
+          });
+        }
+
+     
+        const reglas = {
+          divisorDimensional: DIVISOR_DIM_CM,
+          tarifaBase: Number(tramo.costo_base) || 0,  // base del tramo
+          precioPorKg: 0,
+          umbralSobrepesoKg: Infinity,
+          extraPorKgSobrepeso: 0,
+          fragil: esFragil,
+          recargoFragilPct: 0,         // si en el futuro vas a recargar por frágil, guárdalo en BD
+          usarSeguro: false,           // si usarás seguro, activa y guarda % en BD
+          seguroPctSobreCostoBase: 0,
+          seguroMinimo: 0
+        };
+
+        // Lo que espera el helper como "medidas"
+        const medidas = {
+          costoBase: precioItem,                 // para seguro (si usaras usarSeguro=true)
+          volumen: { base_cm3: volumenCm3 },
+          peso: { real_kg: pesoRealKg }
+        };
+
+        // Calcula costos unitarios con el helper
+        const resultado = calcularTarifa(medidas, reglas);
+
+        const unitarioEnvio = round(resultado.costos.total);
+        const totalItem = round(unitarioEnvio * cantidad);
+        totalEnvio += totalItem;
+
+        detalle.push({
+          item: { ...it, cantidad },
+          medidas: {
+            dimensiones: { alto_cm: alto, ancho_cm: ancho, largo_cm: largo },
+            volumen_cm3: volumenCm3
+          },
+          pesos: {
+            real_kg: round(pesoRealKg),
+            volumetrico_kg: round(pesoVolumetricoKg),
+            tarifable_kg: round(kgTarifables)
+          },
+          tramo_usado: {
+            id_tarifa: tramo.id_tarifa,
+            peso_minimo: tramo.peso_minimo,
+            peso_maximo: tramo.peso_maximo,
+            volumen_min: tramo.volumen_min,
+            volumen_max: tramo.volumen_max,
+            costo_base: tramo.costo_base
+          },
+          costos: {
+            unitario_envio: unitarioEnvio,
+            total_item: totalItem
+          }
+        });
+      }
+
+      res.status(200).send({
+        message: "Tarifa de envío calculada correctamente.",
+        total_envio: round(totalEnvio),
+        moneda: "Q", // ajusta según corresponda
+        detalle
+      });
+    } catch (err) {
+      console.error(err);
+      res.status(500).send({ message: err.message || "Error al calcular la tarifa de envío." });
     }
   }
 }
