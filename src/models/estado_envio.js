@@ -16,7 +16,7 @@ module.exports = (sequelize) => {
         allowNull: false
       },
       estado: {
-        type: DataTypes.VARCHAR(50),
+        type: DataTypes.STRING(50),
         defaultValue: 'pendiente',
         validate: {
           isIn: [['pendiente', 'en_transito', 'recolectado', 'entregado', 'en_bodega']],}

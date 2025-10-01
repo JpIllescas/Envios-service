@@ -16,7 +16,7 @@ module.exports = (sequelize) => {
         allowNull: false
       },
       numero_guia: {
-        type: DataTypes.VARCHAR(50),
+        type: DataTypes.STRING(50),
         allowNull: false
       },
       direccion_destino: {
@@ -28,7 +28,7 @@ module.exports = (sequelize) => {
         allowNull: false
       },
       estado_actual: {
-        type: DataTypes.VARCHAR(50),
+        type: DataTypes.STRING(50),
         allowNull: false,
         defaultValue: 'pendiente',
         validate: {

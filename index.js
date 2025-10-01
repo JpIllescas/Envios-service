@@ -1,6 +1,5 @@
 const express = require('express');
 const cors = require('cors');
-const path = require('path');
 const { APP_PORT, FRONTEND_URL } = require('./src/config/config.js');
 const db = require('./src/models/index.js'); 
 const EnvioRoute = require('./src/routes/envio.route.js');

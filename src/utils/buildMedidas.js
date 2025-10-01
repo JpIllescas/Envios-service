@@ -1,17 +1,3 @@
-
-/**
- * Calcula peso volumétrico y la tarifa en base a reglas configurables.
- * @param {object} medidas - salida de buildMedidaProducto(p)
- * @param {object} reglas  - configuración de precios y recargos
- *
- * Reglas por defecto :
- *  - divisorDimensional: 5000 (cm) -> peso volumétrico = (LxAxH)/5000
- *  - tarifaBase: 10
- *  - precioPorKg: 2.5
- *  - sobrepeso: umbral 20kg, +1.2/ kg extra
- *  - fragil: false, recargo 10%
- *  - seguro: 1.5% del costoBase del producto, mínimo 1
- */
 function calcularTarifa(medidas, reglas = {}) {
   const cfg = {
     divisorDimensional: 5000, 
