@@ -1,6 +1,6 @@
 const db = require("../models");
 const Envio_producto = db.getModel("Envio_producto");
-
+const Envio = db.getModel("Envio");
 class Envio_productoController {
   // Crear un nuevo envio_producto
   async createEnvio_producto(req, res) {
