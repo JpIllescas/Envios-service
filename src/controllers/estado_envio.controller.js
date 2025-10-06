@@ -4,10 +4,11 @@ const EstadoEnvio = db.getModel("Estado_envio");
 class EstadoEnvioController {
   // Crear un nuevo estado de envío
   async createEstadoEnvio(req, res) {
-    const { id_envio, estado } = req.body;
+    const { id_envio } = req.body;
+    const estado = 'pendiente'; 
 
-    if (!id_envio || !estado) {
-      return res.status(400).send({ message: "id_envio y estado son obligatorios." });
+    if (!id_envio ) {
+      return res.status(400).send({ message: "id_envio es obligatorio" });
     }
 
     try {
@@ -48,16 +49,29 @@ class EstadoEnvioController {
   // Actualizar un estado de envío por id_estado
   async updateEstadoEnvio(req, res) {
     const { id_estado } = req.params;
-    const { estado } = req.body;
 
     try {
       const estadoEnvio = await EstadoEnvio.findByPk(id_estado);
       if (!estadoEnvio) {
         return res.status(404).send({ message: "Estado de envío no encontrado." });
       }
-
-      if (estado) estadoEnvio.estado = estado;
-      await estadoEnvio.save();
+      
+      if (estadoEnvio.estado === 'pendiente') {
+        estadoEnvio.estado = 'recolectado';
+        await estadoEnvio.save(); 
+      }
+      if (estadoEnvio.estado === 'recolectado') {
+        estadoEnvio.estado = 'en_bodega';
+        await estadoEnvio.save(); 
+      }
+      if (estadoEnvio.estado === 'en_bodega') {
+        estadoEnvio.estado = 'en_transito';
+        await estadoEnvio.save(); 
+      }
+      if (estadoEnvio.estado === 'en_transito') {
+        estadoEnvio.estado = 'entregado';
+        await estadoEnvio.save(); 
+      }      
 
       res.send({
         message: "Estado de envío actualizado correctamente.",

@@ -4,9 +4,10 @@ const Envio = db.getModel("Envio");
 class EnvioController {
   // Crear un nuevo envío
   async createEnvio(req, res) {
-    const { id_usuario, direccion_destino, costo_envio, estado_actual, fecha_estimada } = req.body;
+    const { id_usuario, direccion_destino, costo_envio, fecha_estimada } = req.body;
+    const estado_actual = 'pendiente'; // Estado inicial por defecto
 
-    if (!id_usuario || !direccion_destino || !costo_envio || !estado_actual || !fecha_estimada) {
+    if (!id_usuario || !direccion_destino || !costo_envio || !fecha_estimada) {
       return res.status(400).send({ message: "Todos los campos del envio son obligatorios." });
     }
 
@@ -71,7 +72,7 @@ class EnvioController {
   // Actualizar un envío
   async updateEnvio(req, res) {
     const { numero_guia } = req.params;
-    const { fecha_estimada, estado_actual } = req.body;
+    const { fecha_estimada, accion } = req.body; // 'accion' puede ser 'avanzar_estado'
 
     try {
       const envio = await Envio.findOne({ where: { numero_guia } });
@@ -79,8 +80,26 @@ class EnvioController {
         return res.status(404).send({ message: "Envío no encontrado." });
       }
 
-      if (fecha_estimada) envio.fecha_estimada = new Date(fecha_estimada);
-      if (estado_actual) envio.estado_actual = estado_actual;
+      // Actualiza la fecha si se envía
+      if (fecha_estimada) {
+        envio.fecha_estimada = new Date(fecha_estimada);
+      }
+
+      // Avanza el estado solo si se solicita explícitamente
+      if (accion === 'avanzar_estado') {
+        switch (envio.estado_actual) {
+          case 'pendiente':
+            envio.estado_actual = 'en_bodega';
+            break;
+          case 'en_bodega':
+            envio.estado_actual = 'en_transito';
+            break;
+          case 'en_transito':
+            envio.estado_actual = 'entregado';
+            break;
+          // Si ya está entregado, no avanza más
+        }
+      }
 
       await envio.save();
 
@@ -92,7 +111,7 @@ class EnvioController {
       res.status(500).send({ message: "Error al actualizar el envío." });
     }
   }
-  }
+}
 
 
 module.exports = EnvioController;
