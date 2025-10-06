@@ -92,21 +92,7 @@ class EnvioController {
       res.status(500).send({ message: "Error al actualizar el envío." });
     }
   }
-
-  // Eliminar un envío
-  async deleteEnvio(req, res) {
-    const { id_envio } = req.params;
-    try {
-      const envio = await Envio.findByPk(id_envio);
-      if (!envio) {
-        return res.status(404).send({ message: "Envío no encontrado." });
-      }
-      await envio.destroy();
-      res.send({ message: "Envío eliminado exitosamente." });
-    } catch (err) {
-      res.status(500).send({ message: "Error al eliminar el envío." });
-    }
   }
-}
+
 
 module.exports = EnvioController;

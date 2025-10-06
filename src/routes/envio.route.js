@@ -22,8 +22,6 @@ class EnvioRoute {
     // Actualizar un envio por numero de guia
     this.router.put("/:numero_guia", this.controller.updateEnvio.bind(this.controller));
 
-    // Eliminar un envio por id_envio
-    this.router.delete("/:id_envio", this.controller.deleteEnvio.bind(this.controller));
   }
 }
 
