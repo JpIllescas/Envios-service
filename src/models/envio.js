@@ -27,13 +27,6 @@ module.exports = (sequelize) => {
         type: DataTypes.DECIMAL(10, 2),
         allowNull: false
       },
-      estado_actual: {
-        type: DataTypes.STRING(50),
-        allowNull: false,
-        defaultValue: 'pendiente',
-        validate: {
-          isIn: [['pendiente', 'en_transito', 'entregado', 'cancelado', 'en_bodega']],}
-      },
       fecha_estimada: {
         type: DataTypes.DATE,
         allowNull: true

@@ -49,30 +49,35 @@ class EstadoEnvioController {
   // Actualizar un estado de envío por id_estado
   async updateEstadoEnvio(req, res) {
     const { id_estado } = req.params;
+    const { accion } = req.body; // 'accion' puede ser 'avanzar_estado'
 
     try {
       const estadoEnvio = await EstadoEnvio.findByPk(id_estado);
+
       if (!estadoEnvio) {
         return res.status(404).send({ message: "Estado de envío no encontrado." });
       }
       
-      if (estadoEnvio.estado === 'pendiente') {
-        estadoEnvio.estado = 'recolectado';
-        await estadoEnvio.save(); 
+      if (accion === 'avanzar_estado') {
+        switch (estadoEnvio.estado) {
+          case 'pendiente':
+            estadoEnvio.estado = 'recolectado';
+            break;
+          case 'recolectado':
+            estadoEnvio.estado = 'en_bodega';
+            break;
+          case 'en_bodega':
+            estadoEnvio.estado = 'en_transito';
+            break;
+          case 'en_transito':
+            estadoEnvio.estado = 'entregado';
+            break;
+          // Si ya está entregado, no avanza más
+        }
       }
-      if (estadoEnvio.estado === 'recolectado') {
-        estadoEnvio.estado = 'en_bodega';
-        await estadoEnvio.save(); 
-      }
-      if (estadoEnvio.estado === 'en_bodega') {
-        estadoEnvio.estado = 'en_transito';
-        await estadoEnvio.save(); 
-      }
-      if (estadoEnvio.estado === 'en_transito') {
-        estadoEnvio.estado = 'entregado';
-        await estadoEnvio.save(); 
-      }      
 
+      await estadoEnvio.save();
+      
       res.send({
         message: "Estado de envío actualizado correctamente.",
         estado_envio: estadoEnvio,

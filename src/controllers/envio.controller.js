@@ -1,11 +1,11 @@
 const db = require("../models");
 const Envio = db.getModel("Envio");
+const axios = require('axios');
 
 class EnvioController {
   // Crear un nuevo envío
   async createEnvio(req, res) {
     const { id_usuario, direccion_destino, costo_envio, fecha_estimada } = req.body;
-    const estado_actual = 'pendiente'; // Estado inicial por defecto
 
     if (!id_usuario || !direccion_destino || !costo_envio || !fecha_estimada) {
       return res.status(400).send({ message: "Todos los campos del envio son obligatorios." });
@@ -32,9 +32,17 @@ class EnvioController {
         numero_guia,
         direccion_destino,
         costo_envio,
-        estado_actual,
         fecha_estimada: fechaFormateada
       });
+
+      try {
+        const url = process.env.ESTADO_ENVIO_URL
+        const response = await axios.post(`${url}/envio-service/estado_envio`, 
+          { id_envio: nuevoEnvio.id_envio }
+        )
+      } catch (error) {
+        res.status(500).send({ message: "Error al crear el estado envio." });
+      }
 
       res.status(201).send({
         message: "Envío creado exitosamente.",
@@ -72,7 +80,7 @@ class EnvioController {
   // Actualizar un envío
   async updateEnvio(req, res) {
     const { numero_guia } = req.params;
-    const { fecha_estimada, accion } = req.body; // 'accion' puede ser 'avanzar_estado'
+    const { fecha_estimada } = req.body; // 'accion' puede ser 'avanzar_estado'
 
     try {
       const envio = await Envio.findOne({ where: { numero_guia } });
@@ -83,22 +91,6 @@ class EnvioController {
       // Actualiza la fecha si se envía
       if (fecha_estimada) {
         envio.fecha_estimada = new Date(fecha_estimada);
-      }
-
-      // Avanza el estado solo si se solicita explícitamente
-      if (accion === 'avanzar_estado') {
-        switch (envio.estado_actual) {
-          case 'pendiente':
-            envio.estado_actual = 'en_bodega';
-            break;
-          case 'en_bodega':
-            envio.estado_actual = 'en_transito';
-            break;
-          case 'en_transito':
-            envio.estado_actual = 'entregado';
-            break;
-          // Si ya está entregado, no avanza más
-        }
       }
 
       await envio.save();
