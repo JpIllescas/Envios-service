@@ -3,7 +3,26 @@ const Tarifa_envio = db.getModel("Tarifa_envio");
 const { calcularTarifa } = require("../utils/buildMedidas");
 
 function round(n, dec = 2) { return Number(Number(n).toFixed(dec)); }
-
+function parseDiscountTiers(src) {
+  if (!src) return [];
+  return String(src)
+    .split(",")
+    .map(s => s.trim())
+    .filter(Boolean)
+    .map(pair => {
+      const [thr, pct] = pair.split(":").map(x => x.trim());
+      const t = Number(thr), p = Number(pct);
+      if (!Number.isFinite(t) || !Number.isFinite(p)) return null;
+      return { threshold: t, pct: p };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.threshold - b.threshold);
+}
+function getDiscountPct(subtotal, tiers) {
+  let pct = 0;
+  for (const t of tiers) if (subtotal >= t.threshold) pct = t.pct;
+  return pct;
+}
 function haversineKm(aLat, aLng, bLat, bLng) {
   const toRad = (x) => (x * Math.PI) / 180;
   const R = 6371;
@@ -11,11 +30,8 @@ function haversineKm(aLat, aLng, bLat, bLng) {
   const dLng = toRad(bLng - aLng);
   const lat1 = toRad(aLat);
   const lat2 = toRad(bLat);
-  const sinDLat = Math.sin(dLat / 2);
-  const sinDLng = Math.sin(dLng / 2);
-  const h = sinDLat * sinDLat + Math.cos(lat1) * Math.cos(lat2) * sinDLng * sinDLng;
-  const c = 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
-  return R * c;
+  const h = Math.sin(dLat/2)**2 + Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLng/2)**2;
+  return 2 * R * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
 }
 
 class Tarifa_envioController {
@@ -102,6 +118,7 @@ class Tarifa_envioController {
       const COSTO_POR_KM = Number(process.env.SHIP_COST_PER_KM || 0.4);
       const DISTANCIA_MIN_KM = Number(process.env.SHIP_MIN_KM || 3);
       const RURAL_SURCHARGE_PCT = Number(process.env.SHIP_RURAL_SURCHARGE_PCT || 0.1);
+      const DISCOUNT_TIERS = parseDiscountTiers(process.env.SHIP_DISCOUNT_TIERS || "200:0.05,400:0.1,700:0.15");
 
       let distanceKm = 0;
       if (Number.isFinite(Number(envio.distance_km))) {
@@ -121,6 +138,7 @@ class Tarifa_envioController {
       const detalle = [];
       let totalKgTarifables = 0;
       let maxCostoBaseTramo = 0;
+      let subtotalMercaderia = 0;
 
       for (const it of items) {
         const cantidad = Number(it?.cantidad) || 1;
@@ -130,6 +148,8 @@ class Tarifa_envioController {
         const pesoRealKg = Number(it?.peso) || 0;
         const precioItem = Number(it?.precio) || 0;
         const esFragil   = Boolean(it?.fragil);
+
+        subtotalMercaderia += round(precioItem * cantidad);
 
         const volumenCm3 = alto * ancho * largo;
         const pesoVolumetricoKg = DIVISOR_DIM_CM > 0 ? (volumenCm3 / DIVISOR_DIM_CM) : 0;
@@ -199,7 +219,8 @@ class Tarifa_envioController {
             unitario_envio_base: 0,
             total_item_base: totalItemBase
           },
-          _kg_tarifables_item: kgTarifables * cantidad
+          _kg_tarifables_item: kgTarifables * cantidad,
+          _shipping_cost_before_adjustments: totalItemBase
         });
 
         totalKgTarifables += kgTarifables * cantidad;
@@ -225,6 +246,7 @@ class Tarifa_envioController {
           d.costos.recargo_distancia_item = extra;
           d.costos.costo_base_envio_item = 0;
           d.costos.total_item = round((d.costos.total_item_base || 0) + extra);
+          d._shipping_cost_before_adjustments += extra;
         });
         totalEnvio = round(totalEnvio + recargoDistribuible);
       } else {
@@ -235,7 +257,33 @@ class Tarifa_envioController {
         });
       }
 
-      detalle.forEach((d) => { delete d._kg_tarifables_item; });
+      const discountPct = getDiscountPct(subtotalMercaderia, DISCOUNT_TIERS);
+      let discountTotal = 0;
+      if (discountPct > 0 && totalEnvio > 0) {
+        const preDiscountTotal = detalle.reduce((acc, d) => acc + (d._shipping_cost_before_adjustments || d.costos.total_item), 0);
+        discountTotal = round(preDiscountTotal * discountPct);
+
+        let distributed = 0;
+        detalle.forEach((d, idx) => {
+          const base = d._shipping_cost_before_adjustments || d.costos.total_item;
+          const share = preDiscountTotal > 0 ? base / preDiscountTotal : 0;
+          let disc = round(discountTotal * share);
+          if (idx === detalle.length - 1) disc = round(discountTotal - distributed);
+          else distributed += disc;
+
+          d.costos.descuento_envio_item = disc;
+          d.costos.total_item = round((d.costos.total_item || 0) - disc);
+        });
+
+        totalEnvio = round(totalEnvio - discountTotal);
+      } else {
+        detalle.forEach(d => { d.costos.descuento_envio_item = 0; });
+      }
+
+      detalle.forEach((d) => {
+        delete d._kg_tarifables_item;
+        delete d._shipping_cost_before_adjustments;
+      });
 
       res.status(200).send({
         message: "Tarifa de envío calculada correctamente.",
@@ -245,6 +293,9 @@ class Tarifa_envioController {
         recargo_distancia_total: round(distanceCharge),
         costo_base_envio_unico: costoBaseEnvioUnico,
         rural: Boolean(rural),
+        subtotal_mercaderia: round(subtotalMercaderia),
+        descuento_por_envio_pct: discountPct,
+        descuento_por_envio_total: round(discountTotal),
         detalle
       });
     } catch (err) {
