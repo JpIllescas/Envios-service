@@ -1,6 +1,7 @@
 const db = require("../models");
 const Envio_producto = db.getModel("Envio_producto");
 const Envio = db.getModel("Envio");
+const axios= require("axios")
 class Envio_productoController {
   // Crear un nuevo envio_producto
   async createEnvio_producto(req, res) {
@@ -46,15 +47,58 @@ class Envio_productoController {
   }
 
   // Obtener todos los productos de un envío específico
+
   async getEnvio_productosByEnvio(req, res) {
     const { id_envio } = req.params;
     try {
+      const producto_url = process.env.PRODUCTO_SERVICE;
+      if (!producto_url) {
+        return res
+          .status(400)
+          .send({ message: "No es posible llamar al servicio de productos." });
+      }
+
       const productos = await Envio_producto.findAll({ where: { id_envio } });
-      res.send(productos);
+      if (!productos || productos.length === 0) {
+        return res.status(404).send({ message: "No hay productos asociados a este envío." });
+      }
+
+      // Llamadas paralelas al microservicio de productos
+      const productosDetallados = await Promise.all(
+        productos.map(async (p) => {
+          try {
+            //solo llama al microservicio si tiene un id
+            if(p.id_producto){
+              const resp = await axios.get(
+                `${producto_url}/producto-service/producto/${p.id_producto}`
+              );
+              return {
+                ...p.toJSON(),
+                producto_detalle: resp.data,
+              };
+            }
+          } catch (err) {
+            console.error("Error obteniendo producto:", p.id_producto, err.message);
+            return {
+              ...p.toJSON(),
+              producto_detalle: null,
+              error: "No se pudo obtener detalle del producto.",
+            };
+          }
+        })
+      );
+
+      res.status(200).send({
+        success: true,
+        productos: productos,
+        data: productosDetallados,
+      });
     } catch (err) {
+      console.error(err);
       res.status(500).send({ message: "Error al obtener los productos del envío." });
     }
   }
+
 
   // Obtener un envio_producto por ID
   async getEnvio_productoById(req, res) {
@@ -96,6 +140,7 @@ class Envio_productoController {
       res.status(500).send({ message: err.message || "Error al actualizar el producto del envío." });
     }
   }
+  
 
   // Eliminar un envio_producto
   async deleteEnvio_producto(req, res) {

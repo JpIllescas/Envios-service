@@ -72,7 +72,6 @@ class EstadoEnvioController {
           case 'en_transito':
             estadoEnvio.estado = 'entregado';
             break;
-          // Si ya está entregado, no avanza más
         }
       }
 
