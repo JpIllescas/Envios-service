@@ -2,7 +2,7 @@
 const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
-const { APP_PORT, FRONTEND_URL } = require('./src/config/config.js');
+const { PORT, FRONTEND_URL } = require('./src/config/config.js');
 const db = require('./src/models/index.js');
 
 const EnvioRoute = require('./src/routes/envio.route.js');
@@ -16,7 +16,7 @@ const { apiReference } = require('@scalar/express-api-reference');
 class Server {
   constructor() {
     this.app = express();
-    this.port = APP_PORT;
+    this.port = PORT;
 
     this.app.use(cookieParser());
     this.app.use(express.json());
